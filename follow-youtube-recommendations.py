@@ -51,49 +51,6 @@ class YoutubeFollower():
 
         print ('Location = ' + repr(self._gl) + ' Language = ' + repr(self._language))
 
-    def get_search_results(self, search_terms, max_results, top_rated=False):
-        assert max_results < 20, 'max_results was not implemented to be > 20'
-
-        if self._verbose:
-            print ('Searching for {}'.format(search_terms))
-
-        # Trying to get results from cache
-        if search_terms in self._search_infos and len(self._search_infos[search_terms]) >= max_results:
-            return self._search_infos[search_terms][0:max_results]
-
-        # Escaping search terms for youtube
-        escaped_search_terms = urllib2.quote(search_terms.encode('utf-8'))
-
-        # We only want search results that are videos, filtered by viewcoung.
-        #  This is achieved by using the youtube URI parameter: sp=CAMSAhAB
-        if self._alltime:
-            filter = "CAMSAhAB"
-        else:
-            if top_rated:
-                filter = "CAE%253D"
-            else:
-                filter = "EgIQAQ%253D%253D"
-
-        url = "https://www.youtube.com/results?sp=" + filter + "&q=" + escaped_search_terms
-        if self._gl:
-            url = url + '&gl=' + self._gl
-
-        print ('Searching URL: ' + url)
-
-        headers = {}
-        if self._language:
-            headers["Accept-Language"] = self._language
-        url_request = urllib2.Request(url, headers=headers)
-        html = urllib2.urlopen(url_request)
-        soup = BeautifulSoup(html, "lxml")
-
-        videos = []
-        for item_section in soup.findAll('div', {'class': 'yt-lockup-dismissable'}):
-            video = item_section.contents[0].contents[0]['href'].split('=')[1]
-            videos.append(video)
-
-        self._search_infos[search_terms] = videos
-        return videos[0:max_results]
 
     def get_video_details(self, video_id):
         # Pull from cache or download new copy
@@ -121,25 +78,10 @@ class YoutubeFollower():
         for video in self.get_recommendations(current_video, branching, depth):
             all_recos.extend(self.get_n_recommendations(video, branching, depth - 1))
         return all_recos
-
-    def compute_all_recommendations_from_search(self, search_terms, search_results, branching, depth):
-        search_results = self.get_search_results(search_terms, search_results)
-        print ('Search results ' + repr(search_results))
-
-        all_recos = []
-        for video in search_results:
-            all_recos.extend(self.get_n_recommendations(video, branching, depth))
-            print ('\n\n\nNext search: ')
-        all_recos.extend(search_results)
-        return all_recos
-
-    def count(self, iterator):
-        counts = {}
-        for video in iterator:
-            counts[video] = counts.get(video, 0) + 1
-        return counts
-
-    def go_deeper_from(self, search_term, search_results, branching, depth):
+    
+    # tsr 1
+    def follow_from_search(self, search_term, search_results, branching, depth):
+        search.results(search_term, search_results, branching, depth) 
         all_recos = self.compute_all_recommendations_from_search(search_term, search_results, branching, depth)
         counts = self.count(all_recos)
         print ('\n\n\nSearch term = ' + search_term + '\n')
@@ -147,6 +89,13 @@ class YoutubeFollower():
         sorted_videos = sorted(counts, key=counts.get, reverse=True)
         return sorted_videos, counts
 
+
+
+    def count(self, iterator):
+        counts = {}
+        for video in iterator:
+            counts[video] = counts.get(video, 0) + 1
+        return counts
     def save_video_infos(self, keyword):
         print ('Wrote file:')
         date = time.strftime('%Y%m%d')
@@ -171,36 +120,6 @@ class YoutubeFollower():
     def video_is_mature(self, video):
         return int(video['likes']) > MATURITY_THRESHOLD
 
-    def print_graph(self, links_per_video, only_mature_videos=True):
-        input_links_counts = self.count_recommendation_links()
-        graph = {}
-        nodes = []
-        links = []
-        for video_id in self._video_infos:
-            video = self._video_infos[video_id]
-            if video['likes'] < MATURITY_THRESHOLD:
-                popularity = -1
-            else:
-                popularity = video['likes'] / float(video['likes'] + video['dislikes'] + 1)
-
-            if self.video_is_mature(video):
-                nodes.append({'id': video_id, 'size': input_links_counts.get(video_id, 0), 'popularity': popularity, 'type': 'circle', 'likes': video['likes'], 'dislikes': video['dislikes'], 'views': video['views'], 'depth': video['depth']})
-            link = 0
-            for reco in self._video_infos[video_id]['recommendations']:
-                if reco in self._video_infos:
-                    if self.video_is_mature(self._video_infos[video_id]) and self.video_is_mature(self._video_infos[reco]):
-                        links.append({'source': video_id, 'target': reco, 'value': 1})
-                    link += 1
-                    if link >= links_per_video:
-                        break
-        graph['nodes'] = nodes
-        graph['links'] = links
-        with open('./graph-' + self._name + '.json', 'w') as fp:
-            json.dump(graph, fp)
-        date = time.strftime('%Y-%m-%d')
-        with open('./graph-' + self._name + '-' + date + '.json', 'w') as fp:
-            json.dump(graph, fp)
-        print ('Wrote graph as: ' + './graph-' + self._name + '-' + date + '.json')
 
     def get_top_rated(self, search_terms):
         top_rated_videos = self.get_search_results(self, search_terms, 20, top_rated=True)
@@ -243,14 +162,19 @@ class YoutubeFollower():
             video['mult'] = video['recommendations'] / avg
         return video_infos[:max_length_count]
 
+# tsr 0    
 def compare_keywords(query, search_results, branching, depth, name, gl, language):
+    total_results = search_results * branching * depth
+    print "Total of " + str(total_results) + " videos will be processed."
+
+    
     date = time.strftime('%Y-%m-%d')
     file_name = 'results/' + name + '-' + date + '.json'
     print ('Running, will save the resulting json to:' + file_name)
     top_videos = {}
     for keyword in query.split(','):
         yf = YoutubeFollower(verbose=True, name=keyword, alltime=False, gl=gl, language=language)
-        top_recommended, counts = yf.go_deeper_from(keyword,
+        top_recommended, counts = yf.follow_from_search(keyword,
                           search_results=search_results,
                           branching=branching,
                           depth=depth)
