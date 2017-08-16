@@ -8,14 +8,22 @@ __author__ = 'Guillaume Chaslot'
         4) stores the results in a json file
 """
 
+
+import os
+import sys
+src_path = os.path.dirname(os.path.abspath(__file__)) + "/src"
+sys.path.append(src_path)
+
 import urllib2
 import re
 import json
 import sys
 import argparse
 import time
+import youtube_watch_page
 
 from bs4 import BeautifulSoup
+
 
 RECOMMENDATIONS_PER_VIDEO = 1
 RESULTS_PER_SEARCH = 1
@@ -42,13 +50,6 @@ class YoutubeFollower():
         self._language = language
 
         print ('Location = ' + repr(self._gl) + ' Language = ' + repr(self._language))
-
-    def clean_count(self, text_count):
-        # Ignore non ascii
-        ascii_count = text_count.encode('ascii', 'ignore')
-        # Ignore non numbers
-        p = re.compile('[\d,]+')
-        return int(p.findall(ascii_count)[0].replace(',', ''))
 
     def get_search_results(self, search_terms, max_results, top_rated=False):
         assert max_results < 20, 'max_results was not implemented to be > 20'
@@ -94,98 +95,23 @@ class YoutubeFollower():
         self._search_infos[search_terms] = videos
         return videos[0:max_results]
 
-    def get_recommendations(self, video_id, nb_recos_wanted, depth):
+    def get_video_details(self, video_id):
+        # Pull from cache or download new copy
         if video_id in self._video_infos:
+            return self._video_infos[video_id]
+        else:
+            page = youtube_watch_page.YoutubeWatchPage(video_id)
+            data = page.dict()
+            self._video_infos[video_id] = data
+            return data
+        
+    def get_recommendations(self, video_id, nb_recos_wanted, depth):
+        data = self.get_video_details(video_id)
+        data['depth'] = depth
+        print (repr(data['title'] + ' ' + str(data['views']) + ' views , depth: ' + str(data['depth'])))
+        #print (repr(data['recommendations']))
 
-            # Updating the depth if this video was seen.
-            self._video_infos[video_id]['depth'] = min(self._video_infos[video_id]['depth'], depth)
-            print ('a video was seen at a lower depth')
-
-            video = self._video_infos[video_id]
-            recos_returned = []
-            for reco in video['recommendations']:
-                # This line avoids to loop around the same videos:
-                if reco not in self._video_infos:
-                    recos_returned.append(reco)
-                    if len(recos_returned) >= nb_recos_wanted:
-                        break
-            print ('\n Following recommendations ' + repr(recos_returned) + '\n')
-            return recos_returned
-
-        url = "https://www.youtube.com/watch?v=" + video_id
-
-        while True:
-            try:
-                html = urllib2.urlopen(url)
-                break
-            except urllib2.URLError:
-                time.sleep(1)
-        soup = BeautifulSoup(html, "lxml")
-
-        # Views
-        views = -1
-        for watch_count in soup.findAll('div', {'class': 'watch-view-count'}):
-            try:
-                views = self.clean_count(watch_count.contents[0])
-            except IndexError:
-                pass
-
-        # Likes
-        likes = -1
-        for like_count in soup.findAll('button', {'class': 'like-button-renderer-like-button'}):
-            try:
-                likes = self.clean_count(like_count.contents[0].text)
-            except IndexError:
-                pass
-
-        # Dislikes
-        dislikes = -1
-        for like_count in soup.findAll('button', {'class': 'like-button-renderer-dislike-button'}):
-            try:
-                dislikes = self.clean_count(like_count.contents[0].text)
-            except IndexError:
-                pass
-
-        # Recommendations
-        recos = []
-        upnext = True
-        for video_list in soup.findAll('ul', {'class': 'video-list'}):
-            if upnext:
-                # Up Next recommendation
-                recos.append(video_list.contents[1].contents[1].contents[1]['href'].replace('/watch?v=', ''))
-                upnext = False
-            else:
-                # 19 Others
-                for i in range(1, 19):
-                    try:
-                        recos.append(video_list.contents[i].contents[1].contents[1]['href'].replace('/watch?v=', ''))
-                    except IndexError:
-                        if self._verbose:
-                            print ('Could not get a recommendation because there are not enough')
-                    except AttributeError:
-                        if self._verbose:
-                            print ('Could not get a recommendation because of malformed content')
-
-        title = ''
-        for eow_title in soup.findAll('span', {'id': 'eow-title'}):
-            title = eow_title.text.strip()
-
-        if title == '':
-            print ('WARNING: title not found')
-
-        if video_id not in self._video_infos:
-            self._video_infos[video_id] = {'views': views,
-                                           'likes': likes,
-                                           'dislikes': dislikes,
-                                           'recommendations': recos,
-                                           'title': title,
-                                           'depth': depth,
-                                           'id': video_id}
-
-        video = self._video_infos[video_id]
-        print (repr(video['title'] + ' ' + str(video['views']) + ' views , depth: ' + str(video['depth'])))
-        print (repr(video['recommendations']))
-        return recos[:nb_recos_wanted]
+        return data['recommendations']
 
     def get_n_recommendations(self, seed, branching, depth):
         if depth is 0:
@@ -346,8 +272,9 @@ def main():
     parser.add_argument('--alltime', default=False, type=bool, help='If we get search results ordered by highest number of views')
     parser.add_argument('--gl', help='Location passed to YouTube e.g. US, FR, GB, DE...')
     parser.add_argument('--language', help='Languaged passed to HTML header, en, fr, en-US, ...')
-    parser.add_argument('--makehtml', default=False, type=bool,
-        help='If true, writes a .html page with the name which compare most recommended videos and top rated ones.')
+    # Not yet implemented
+    # parser.add_argument('--makehtml', default=False, type=bool,
+    #     help='If true, writes a .html page with the name which compare most recommended videos and top rated ones.')
 
     args = parser.parse_args()
     compare_keywords(args.query, args.searches, args.branch, args.depth, args.name, args.gl, args.language)
