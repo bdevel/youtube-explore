@@ -1,29 +1,30 @@
 
 class Search():
-    def __init__(self, search_phrase, language):
+    def __init__(self, search_phrase, lang, gl):
         self._search_phrase = search_phrase
-        self._language = language
+        self._language = lang
+        self._gl = gl
+        # self._soup = 
 
 
-    
-    def follow_recommendations(self, search_phrase, search_results, branching, depth):
-        search_results = self._get_search_results(search_phrase, search_results)
-        print ('Search results ' + repr(search_results))
+    # must be same interface as WatchPage
+    def recommended(self):
+        self.results_video_ids()
+            
+    # def follow_recommendations(self, search_phrase, search_results, branching, depth):
+    #     search_results = self._get_search_results(search_phrase, search_results)
+    #     print ('Search results ' + repr(search_results))
 
-        all_recos = []
-        for video in search_results:
-            all_recos.extend(self.get_n_recommendations(video, branching, depth))
-            print ('\n\n\nNext search: ')
-            all_recos.extend(search_results)
-        return all_recos
+    #     all_recos = []
+    #     for video in search_results:
+    #         all_recos.extend(self.get_n_recommendations(video, branching, depth))
+    #         print ('\n\n\nNext search: ')
+    #         all_recos.extend(search_results)
+    #     return all_recos
 
 
 
-    def _get_search_results(self, search_phrase, max_results, top_rated=False):
-            assert max_results < 20, 'max_results was not implemented to be > 20'
-
-        if self._verbose:
-            print ('Searching for {}'.format(search_phrase))
+    def results_video_ids(self):
 
         # Trying to get results from cache
         if search_phrase in self._search_infos and len(self._search_infos[search_phrase]) >= max_results:
@@ -47,7 +48,8 @@ class Search():
             url = url + '&gl=' + self._gl
 
         print ('Searching URL: ' + url)
-
+        print ('Location = ' + repr(self._gl) + ' Language = ' + repr(self._language))
+        
         headers = {}
         if self._language:
             headers["Accept-Language"] = self._language

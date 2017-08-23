@@ -1,7 +1,5 @@
 
-import os
 import re
-import urllib2
 from bs4 import BeautifulSoup
 
 # TODO:
@@ -9,11 +7,13 @@ from bs4 import BeautifulSoup
 #  duration?
 # thumb can get later easy via id
 
-class YoutubeWatchPage():
+import download
+
+class WatchPage():
     def __init__(self, video_id):
         self._video_id = video_id
         
-        self._html = self.download_cached('video-' + video_id + '.html', self.url())
+        self._html = download.get_and_cache('video-' + video_id + '.html', self.url())
         self._soup = BeautifulSoup(self._html, "lxml")
 
     def video_id(self):
@@ -75,6 +75,7 @@ class YoutubeWatchPage():
             except IndexError:
                 return None
 
+    # must be same interface as Search
     def recommended(self):
         # Recommendations
         recos = []
@@ -86,7 +87,7 @@ class YoutubeWatchPage():
         if len(recos) == 0:
             print ('Could not get a recommendation because of malformed content')
         return recos
-    
+            
     def dict(self):
         return {'id': self.video_id(),
                 'published': self.published(),
@@ -98,12 +99,13 @@ class YoutubeWatchPage():
                 'dislikes': self.dislikes(),
                 'recommendations': self.recommended(),
                 'transcript': self.transcript()}
-
+    
+    # TODO add paragraphs to text.
     def transcript(self):
         url = self.transcript_url()
         if url ==  None:
             return None
-        src = self.download_cached('video-' + self.video_id() + '-transcript.xml', url)
+        src = download.get_and_cache('video-' + self.video_id() + '-transcript.xml', url)
         text = ''
         for t in BeautifulSoup(src, "lxml").select('text'):
             text = text + " " + t.get_text()
@@ -135,29 +137,4 @@ class YoutubeWatchPage():
         p = re.compile('[\d,]+')
         return int(p.findall(ascii_count)[0].replace(',', ''))
 
-    def download_cached(self, cache_name, url):
-        cache_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/cache"
-        cache_file = cache_dir + "/" + cache_name
-        
-        # make cache dir if not created
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
-            
-        if not os.path.exists(cache_file):          
-          while True:
-              try:
-                  u = urllib2.urlopen(url)
-                  f = open(cache_file, 'w')
-                  out = u.read()
-                  f.write(out)
-                  f.close()
-                  return out
-              except urllib2.URLError:
-                  print "Failed to download " + url
-                  time.sleep(1)
-        else:   
-            f = open(cache_file, 'r')
-            out = f.read()
-            f.close()
-            return out
     

@@ -7,7 +7,7 @@ sys.path.append(src_path)
 import unittest
 import youtube_watch_page
 
-print_dbg = False
+print_dbg = True #False
 
 class TestYoutubeWatchPage(unittest.TestCase):
 

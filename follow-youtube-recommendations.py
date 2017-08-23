@@ -21,6 +21,7 @@ import sys
 import argparse
 import time
 import youtube_watch_page
+import search
 
 from bs4 import BeautifulSoup
 
@@ -30,6 +31,34 @@ RESULTS_PER_SEARCH = 1
 
 # NUMBER OF MIN LIKES ON A VIDEO TO CONSIDER IT
 MATURITY_THRESHOLD = 5
+
+# incriment the lowest index item,
+# roll while item < index max_list
+# Note, if you say [2,2] then the
+# max the list will get to is [1,1],
+# as zero counts as an item
+def inc_list(lst, max_list):
+    for i,m in enumerate(max_list):
+        if i >= len(lst):
+            break
+        
+        lst[i] = lst[i] + 1 # inc
+        
+        # reset if at limit
+        if lst[i] >= max_list[i]:
+            lst[i] = 0
+            if i + 1 >= len(lst):
+              # go to 0 of next depth,
+              lst.append(0)
+              if len(lst) > len(max_list):
+                return None# None left
+              break
+            else:
+                continue # inc next depth
+        else:
+            break
+    return lst
+
 
 class YoutubeFollower():
     def __init__(self, verbose=False, name='', alltime=True, gl=None, language=None):
@@ -49,7 +78,7 @@ class YoutubeFollower():
         self._gl = gl
         self._language = language
 
-        print ('Location = ' + repr(self._gl) + ' Language = ' + repr(self._language))
+        
 
 
     def get_video_details(self, video_id):
@@ -62,26 +91,147 @@ class YoutubeFollower():
             self._video_infos[video_id] = data
             return data
         
-    def get_recommendations(self, video_id, nb_recos_wanted, depth):
-        data = self.get_video_details(video_id)
-        data['depth'] = depth
-        print (repr(data['title'] + ' ' + str(data['views']) + ' views , depth: ' + str(data['depth'])))
-        #print (repr(data['recommendations']))
+    # def get_recommendations(self, video_id, nb_recos_wanted, depth):
+    #     data = self.get_video_details(video_id)
+    #     data['depth'] = depth
+    #     print (repr(data['title'] + ' ' + str(data['views']) + ' views , depth: ' + str(data['depth'])))
+    #     #print (repr(data['recommendations']))
 
-        return data['recommendations']
+    #     return data['recommendations']
 
-    def get_n_recommendations(self, seed, branching, depth):
-        if depth is 0:
-            return [seed]
-        current_video = seed
-        all_recos = [seed]
-        for video in self.get_recommendations(current_video, branching, depth):
-            all_recos.extend(self.get_n_recommendations(video, branching, depth - 1))
-        return all_recos
+    # def get_n_recommendations(self, seed, branching, depth):
+    #     if depth is 0:
+    #         return [seed]
+    #     current_video = seed
+    #     all_recos = [seed]
+    #     for video in self.get_recommendations(current_video, branching, depth):
+    #         all_recos.extend(self.get_n_recommendations(video, branching, depth - 1))
+    #     return all_recos
+
+    # def next_path(self, path, r, b, d):
+    #     # is []
+    #     if len(path) == 0:
+    #         path.append(0)
+    #         return path
+        
+    #     # is [x .  . ] < max r 
+    #     elif p[0] < r - 1:# still below max r
+    #         p[0] = p[0] + 1 # inc first
+    #         return p
+        
+    #     elif p[0] >= r:
+    #         # 
+    #         p[1] = p[1] = 0# reset
+    #         if len(p) == 1:
+    #             p.append(0) # go to next depth
+    #             return p
+    #         else:
+    #             p[1] = p[1] + 1
+    #             return p
+    #         return p
+        
+    #     elif p[2] >= b:
+    #         p[2] = p[2] = 0# reset
+    #         if len(p) == 1:
+    #             p.append(0) # go to next depth
+    #             return p
+    #         else:
+    #             p[2] = p[2] + 1
+    #             return p
+    #         return p
+        
+    #      elif p[3] >= :
+    #          p[2] = p[2] = 0# reset
+    #         if len(p) == 1:
+    #             p.append(0) # go to next depth
+    #             return p
+    #         else:
+    #             p[2] = p[2] + 1
+    #             return p
+    #         return p
     
-    # tsr 1
-    def follow_from_search(self, search_term, search_results, branching, depth):
-        search.results(search_term, search_results, branching, depth) 
+    def process_watch_page(self, page, path):
+        data = page.dict()
+        print data['title']
+        # save file
+        # Get channel info
+
+    # returns a WatchPage object for the recommedation at nth recommendations
+    # of successive depths.
+    # Example, [0,0,0]
+    #   gets first result item's, first recommendestion's, first recommendation    
+    def recommended_page_at(self, page, path):
+        if len(path) > 0:
+            # get child since we aren't at the end yet
+            nth = path[0]
+            next_path = path[1:]
+            
+            # get page of recommendation
+            recs = page.recommended()
+            if nth >= len(recs):
+                print "End of list. Unable to get " + str(path)
+                return None
+            child = WatchPage(recs[nth])
+            return self.recommended_page_at(child, next_path)
+        else:
+            # if [] that means end of path, we win!
+            return page
+        
+    def follow_from_search(self, search_term, search_qty, branches, depth):
+        results = search.Search(search_term, self._language, self._gl)
+
+        max_path = [search_qty]
+        max_path.extend([branches] * depth) # -1 to count the search as a level
+        
+        path = [0]# start at first search result item
+        while path != None:
+            print "At: " + str(path)
+            page = self.recommended_page_at(results, path)
+            self.process_watch_page(page, path)
+            path = inc_list(path, max_path)
+        
+        #rec_path = [] # first time around this is the result videos
+        # while True:
+        #     print "At level " + str(rec_path)
+        #     for vid in video_ids:
+        #         page = youtube_watch_page.YoutubeWatchPage(vid)
+        #         r = page.recommendation_at(rec_path)
+                
+        #     if len(rec_path) == 0: # []
+        #         rec_path.append(0)
+                
+        #     elif rec_path[0:1] == search_qty
+        #         rec_path.append(0)
+            
+            #if rec_path != [search_results, branching, depth]:
+            #    break
+            
+        
+        # Crawl priority: To capture videos closest to the term.
+        # We will build out the base first and not deep too fast.
+        # So the plan is to draw one layer at a time.
+        # Depth 0
+        # First we load the pages for every result.
+        # Depth 1
+        # Next we go to the first rec from the first search result.
+        # Then first rec of second result, etc.
+        # Depth n
+        # After n-1 rec of each result is done, do nth rec
+        # search => recommend0
+        #        => recommend1
+        #        => recommend2
+        #        => recommend0 => rec0
+        #        => recommend1 => rec0
+        #        => recommend2 => rec0
+        #        => recommend0 => rec1
+        #        => recommend1 => rec1
+        #        => recommend2 => rec1
+        
+        # Alternative crawl
+        # We want to many thin deep strands from the root
+        # search => recommend0 => rec0 => rec0 => rec0
+        #        => recommend1 => rec0 => rec0 => rec0
+        
         all_recos = self.compute_all_recommendations_from_search(search_term, search_results, branching, depth)
         counts = self.count(all_recos)
         print ('\n\n\nSearch term = ' + search_term + '\n')
@@ -163,8 +313,8 @@ class YoutubeFollower():
         return video_infos[:max_length_count]
 
 # tsr 0    
-def compare_keywords(query, search_results, branching, depth, name, gl, language):
-    total_results = search_results * branching * depth
+def compare_keywords(query, search_qty, branches, depth, name, gl, language):
+    total_results = search_qty * branches * depth
     print "Total of " + str(total_results) + " videos will be processed."
 
     
@@ -175,8 +325,8 @@ def compare_keywords(query, search_results, branching, depth, name, gl, language
     for keyword in query.split(','):
         yf = YoutubeFollower(verbose=True, name=keyword, alltime=False, gl=gl, language=language)
         top_recommended, counts = yf.follow_from_search(keyword,
-                          search_results=search_results,
-                          branching=branching,
+                          search_qty=search_qty,
+                          branches=branches,
                           depth=depth)
         top_videos[keyword] = yf.get_top_videos(top_recommended, counts, 150)
         yf.print_videos(top_recommended, counts, 50)
